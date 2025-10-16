@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monastery 360 - A Journey Through Sikkim</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+
+    <style>
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #334155; }
+        .full-section { min-height: 100vh; width: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; padding: 120px 24px 60px 24px; }
+        .header { transition: background-color: 0.3s ease-in-out, backdrop-filter: 0.3s ease-in-out; }
+        .header.scrolled { background-color: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        #bg-rotator { position: absolute; top: 0; left: 0; width: 100%; height: 100vh; z-index: 1; overflow: hidden; }
+        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; transition: opacity 2s ease-in-out, transform 9s ease-in-out; transform: scale(1.05); }
+        #map { height: 70vh; width: 100%; border-radius: 0.75rem; }
+        .monastery-card-dynamic { perspective: 1000px; }
+        #search-overlay, #mobile-menu { transition: opacity 0.3s ease-in-out; }
+        .container { width: 100%; max-width: 1280px; margin-left: auto; margin-right: auto; }
+        .stat-card { background-color: white; border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); transition: all 0.2s ease-in-out; display: flex; align-items: center; gap: 1rem; }
+        .stat-card:hover { transform: translateY(-5px); box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); cursor: pointer; }
+        #modal { z-index: 3000; }
+        .leaflet-routing-container { display: none; }
+        .leaflet-control-layers-overlays label { font-size: 14px; }
+    </style>
+</head>
+<body class="bg-slate-100">
+
+    <header id="header" class="header fixed top-0 left-0 right-0 z-[1000] flex justify-between items-center px-6 h-16">
+        <div class="text-2xl font-bold text-slate-800"><a href="#hero">Monastery360</a></div>
+        <nav class="hidden md:flex items-center gap-8">
+            <a href="#dashboard" class="text-slate-700 font-medium hover:text-blue-600 transition-colors">Dashboard</a>
+            <a href="#monasteries" class="text-slate-700 font-medium hover:text-blue-600 transition-colors">Explore</a>
+            <a href="#calendar" class="text-slate-700 font-medium hover:text-blue-600 transition-colors">Calendar</a>
+            <a href="#map-view" class="text-slate-700 font-medium hover:text-blue-600 transition-colors">Map</a>
+        </nav>
+        <div class="flex items-center gap-4"><button id="search-btn" class="text-slate-700 hover:text-blue-600"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></button><button id="mobile-menu-btn" class="md:hidden text-slate-700"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></button></div>
+    </header>
+
+    <div id="mobile-menu" class="hidden fixed top-0 left-0 w-full h-full bg-white z-[2000] flex flex-col items-center justify-center gap-8">
+        <button id="mobile-menu-close-btn" class="absolute top-6 right-6 text-3xl">&times;</button>
+        <a href="#dashboard" class="mobile-nav-link text-2xl font-medium">Dashboard</a>
+        <a href="#monasteries" class="mobile-nav-link text-2xl font-medium">Explore</a>
+        <a href="#calendar" class="mobile-nav-link text-2xl font-medium">Calendar</a>
+        <a href="#map-view" class="mobile-nav-link text-2xl font-medium">Map</a>
+    </div>
+    <div id="search-overlay" class="hidden fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 z-[2000] flex justify-center items-start pt-32"><div class="relative w-full max-w-lg"><input type="text" id="search-input-overlay" placeholder="Search by name or era..." class="w-full p-4 rounded-lg shadow-xl focus:outline-none focus:ring-2 focus:ring-blue-500"><button id="search-close-btn" class="absolute top-4 right-4 text-slate-500 text-2xl">&times;</button></div></div>
+
+    <main>
+        <div id="loading" class="fixed inset-0 bg-white z-[9999] flex flex-col justify-center items-center"><svg class="animate-spin h-12 w-12 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><p class="mt-4 text-slate-600">Loading Sacred Sites...</p></div>
+        <div id="error" class="hidden fixed inset-0 bg-white z-[9999] flex justify-center items-center"><div class="text-center p-10 bg-red-100 border border-red-400 text-red-700 rounded-lg"><strong class="font-bold">Error!</strong><span id="error-message" class="block sm:inline"> Could not load data.</span></div></div>
+        
+        <div id="content" class="invisible">
+            <section id="hero" class="full-section text-white text-center"><div id="bg-rotator"></div><div class="absolute top-0 left-0 w-full h-full bg-black opacity-50 z-10"></div><div class="relative z-20"><h1 class="text-5xl md:text-7xl font-extrabold">A Sacred Journey</h1><p class="text-xl md:text-2xl mt-4">Discover the spiritual heart of the Himalayas.</p></div><div class="absolute bottom-10 z-20 animate-bounce"><a href="#dashboard"><svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg></a></div></section>
+            <section id="dashboard" class="full-section bg-slate-50"><div class="container"><h2 class="text-4xl font-bold text-slate-800 mb-8 text-center">Project Dashboard</h2><div id="dashboard-cards" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8"><div id="total-monasteries-card" class="stat-card"><div class="flex-shrink-0 bg-blue-100 text-blue-600 rounded-full h-12 w-12 flex items-center justify-center"><svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg></div><div><h3 class="text-slate-500 font-medium">Total Monasteries</h3><p id="total-monasteries" class="text-3xl font-bold text-slate-800">0</p></div></div><div id="virtual-tours-card" class="stat-card"><div class="flex-shrink-0 bg-green-100 text-green-600 rounded-full h-12 w-12 flex items-center justify-center"><svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.55a2.5 2.5 0 010 4.04l-4.55 4.55a2.5 2.5 0 01-4.04 0L6 14.04a2.5 2.5 0 010-4.04l4.55-4.55a2.5 2.5 0 014.04 0zM15 10l-4.55 4.55" /></svg></div><div><h3 class="text-slate-500 font-medium">With Virtual Tours</h3><p id="virtual-tours" class="text-3xl font-bold text-green-600">0</p></div></div></div><div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold text-slate-800 mb-4">Monasteries by Century</h3><canvas id="eraChart"></canvas></div></div></section>
+            <section id="monasteries" class="full-section bg-white"><div class="container"><h2 class="text-4xl font-bold text-slate-800 mb-8 text-center">Explore the Monasteries</h2><div id="monastery-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div><div id="pagination-controls" class="mt-8 flex justify-center items-center gap-4"></div><p id="no-monasteries-found" class="hidden text-center text-slate-500 mt-8">No monasteries match your search.</p></div></section>
+            
+            <section id="calendar" class="full-section bg-slate-50">
+                <div class="container">
+                    <h2 class="text-4xl font-bold text-slate-800 mb-8 text-center">Cultural Calendar</h2>
+                    <div id="event-list" class="space-y-6">
+                        </div>
+                </div>
+            </section>
+
+            <section id="map-view" class="full-section bg-white"><div class="container text-center"><h2 class="text-4xl font-bold text-slate-800 mb-8">Geographical View</h2><div class="bg-white p-4 rounded-lg shadow-lg"><div id="map"></div></div></div></section>
+        </div>
+    </main>
+    
+    <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4" onclick="if(event.target === this) closeModal()"><div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"><div class="p-5 border-b flex justify-between items-center"><h3 id="modal-title" class="text-xl font-bold text-slate-800"></h3><button id="modal-close" onclick="closeModal()" class="text-slate-400 hover:text-slate-600"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div><div id="modal-content" class="modal-content p-6 overflow-y-auto flex-1"></div></div></div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.11.5/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.7.2/dist/vanilla-tilt.min.js"></script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- CONSTANTS AND VARIABLES ---
+        const header = document.getElementById('header');
+        const searchBtn = document.getElementById('search-btn');
+        const searchOverlay = document.getElementById('search-overlay');
+        const searchInput = document.getElementById('search-input-overlay');
+        const searchCloseBtn = document.getElementById('search-close-btn');
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        const mobileMenuCloseBtn = document.getElementById('mobile-menu-close-btn');
+        const bgRotator = document.getElementById('bg-rotator');
+        
+        const bgImages = ['img/Lingdum-1.jpg', 'img/Lingdum-6.jpg', 'img/ralong-monastery-view.jpg'];
+        let currentBgIndex = 0;
+
+        let monasteriesData = [], attractionsData = [], eventsData = [], filteredMonasteries = [], currentPage = 1;
+        const ITEMS_PER_PAGE = 8;
+        let map, eraChart, currentNarration = null;
+        
+        let monasteryMarkers = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50 });
+        let attractionMarkers = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 40 });
+        let routingControl = null;
+
+        const modal = document.getElementById('modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalContent = document.getElementById('modal-content');
+
+        // --- CORE LOGIC ---
+
+        async function loadData() {
+            try {
+                const [monasteryResponse, attractionResponse, eventResponse] = await Promise.all([
+                    fetch('http://localhost:5001/api/monasteries'),
+                    fetch('http://localhost:5001/api/attractions'),
+                    fetch('http://localhost:5001/api/events')
+                ]);
+
+                if (!monasteryResponse.ok || !attractionResponse.ok || !eventResponse.ok) {
+                    throw new Error(`HTTP error! Monasteries: ${monasteryResponse.status}, Attractions: ${attractionResponse.status}, Events: ${eventResponse.status}`);
+                }
+                
+                monasteriesData = await monasteryResponse.json();
+                attractionsData = await attractionResponse.json();
+                eventsData = await eventResponse.json();
+                
+                initializeApp();
+            } catch (err) {
+                console.error("Failed to load data:", err);
+                document.getElementById('loading')?.remove();
+                const errorDiv = document.getElementById('error');
+                if (errorDiv) {
+                    errorDiv.querySelector('span').textContent = `Could not connect to backend. Please ensure it's running. Details: ${err.message}`;
+                    errorDiv.classList.remove('hidden');
+                }
+            }
+        }
+
+        function initializeApp() {
+            document.getElementById('loading')?.remove();
+            document.getElementById('content')?.classList.remove('invisible');
+            
+            setupDashboard();
+            applyFilterAndRender('all');
+            renderEvents(); // Render the calendar
+            setupMapView();
+            rotateBackground();
+            setInterval(rotateBackground, 7000);
+        }
+
+        // --- NEW CALENDAR FUNCTION ---
+        function renderEvents() {
+            const eventList = document.getElementById('event-list');
+            if (!eventList) return;
+
+            // Sort events by date
+            eventsData.sort((a, b) => new Date(a.Date) - new Date(b.Date));
+
+            eventList.innerHTML = ''; // Clear existing content
+            eventsData.forEach(event => {
+                const eventDate = new Date(event.Date);
+                const month = eventDate.toLocaleString('default', { month: 'short' });
+                const day = eventDate.getDate();
+
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg shadow-md overflow-hidden flex items-center';
+                
+                card.innerHTML = `
+                    <div class="flex-shrink-0 w-24 h-24 bg-blue-600 text-white flex flex-col items-center justify-center">
+                        <span class="text-xl font-bold">${month.toUpperCase()}</span>
+                        <span class="text-4xl font-extrabold">${day}</span>
+                    </div>
+                    <div class="p-4 flex-grow">
+                        <h3 class="font-bold text-lg text-slate-800">${event.EventName}</h3>
+                        <p class="text-sm text-slate-500">${event.Location}</p>
+                        <p class="text-slate-600 mt-2">${event.Description}</p>
+                    </div>
+                `;
+                eventList.appendChild(card);
+            });
+        }
+
+        // --- MAP FUNCTIONS ---
+        // (setupMapView, updateMonasteryMarkers, etc. are unchanged)
+        
+        function setupMapView() {
+            const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' });
+
+            map = L.map('map', { 
+                center: [27.5330, 88.5122], 
+                zoom: 9, 
+                layers: [osm, monasteryMarkers, attractionMarkers]
+            });
+            
+            updateMonasteryMarkers(monasteriesData);
+            updateAttractionMarkers(attractionsData);
+
+            const overlayMaps = {
+                "Monasteries": monasteryMarkers,
+                "Nearby Attractions": attractionMarkers
+            };
+
+            L.control.layers(null, overlayMaps).addTo(map);
+        }
+
+        function updateMonasteryMarkers(monasteries) {
+            monasteryMarkers.clearLayers();
+            monasteries.forEach(monastery => {
+                if (monastery && !isNaN(monastery.Latitude) && !isNaN(monastery.Longitude)) {
+                    const marker = L.marker([monastery.Latitude, monastery.Longitude]);
+                    marker.bindPopup(`<div class="font-sans"><h4 class="font-bold text-md">${monastery.Name}</h4><p class="text-slate-600">${monastery.Era}</p><button class="mt-2 text-sm text-blue-600 hover:underline" onclick="showMonasteryDetails('${monastery.MonasteryID}')">View Details</button></div>`);
+                    monasteryMarkers.addLayer(marker);
+                }
+            });
+        }
+        
+        function updateAttractionMarkers(attractions) {
+            attractionMarkers.clearLayers();
+            const yellowIcon = new L.Icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-yellow.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+            });
+
+            attractions.forEach(item => {
+                if(item && !isNaN(item.Latitude) && !isNaN(item.Longitude)) {
+                    const marker = L.marker([item.Latitude, item.Longitude], { icon: yellowIcon });
+                    marker.bindPopup(`<div class="font-sans"><h4 class="font-bold text-md">${item.Name}</h4><p class="text-slate-600">${item.AttractionType}</p><button class="mt-2 text-sm text-blue-600 hover:underline" onclick="getDirectionsToLocation(${item.Latitude}, ${item.Longitude})">Get Directions</button></div>`);
+                    attractionMarkers.addLayer(marker);
+                }
+            });
+        }
+
+        window.getDirectionsToLocation = function(lat, lng) {
+            if (!navigator.geolocation) {
+                return alert("Geolocation is not supported by your browser.");
+            }
+            navigator.geolocation.getCurrentPosition(position => {
+                const start = [position.coords.latitude, position.coords.longitude];
+                const end = [lat, lng];
+                if (routingControl) map.removeControl(routingControl);
+                routingControl = L.Routing.control({
+                    waypoints: [L.latLng(start), L.latLng(end)],
+                    routeWhileDragging: true,
+                    createMarker: () => null
+                }).addTo(map);
+                
+                if(!modal.classList.contains('hidden')) closeModal();
+                document.getElementById('map-view').scrollIntoView();
+            }, () => {
+                alert("Unable to retrieve your location.");
+            });
+        }
+
+        // --- UI & OTHER FUNCTIONS ---
+        // (All other functions like showMonasteryDetails, applyFilterAndRender, renderMonasteries, etc. are here and unchanged)
+        
+        window.showMonasteryDetails = async function(monasteryId) {
+            const monastery = monasteriesData.find(m => m.MonasteryID == monasteryId);
+            if (!monastery) return;
+            
+            modalTitle.textContent = monastery.Name;
+            if (currentNarration) { currentNarration.pause(); currentNarration = null; }
+
+            let archiveHTML = '';
+            try {
+                const archiveResponse = await fetch(`http://localhost:5001/api/monastery/${monasteryId}/archives`);
+                const archives = await archiveResponse.json();
+                if (archives.length > 0) {
+                    archiveHTML = `<div class="mt-6 border-t pt-4"><h4 class="text-lg font-semibold text-slate-800 mb-4">Digital Archives</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4">`;
+                    archives.forEach(item => {
+                        archiveHTML += `<div class="border rounded-lg p-3 bg-slate-50/50 shadow-sm"><h5 class="font-bold text-slate-700">${item.title}</h5><p class="text-sm text-slate-500 capitalize mb-2">${item.document_type}</p><p class="text-sm text-slate-600">${item.description}</p><a href="${item.file_url}" target="_blank" class="text-sm text-blue-600 hover:underline mt-2 inline-block">View Item</a></div>`;
+                    });
+                    archiveHTML += '</div></div>';
+                }
+            } catch (error) { console.error('Failed to fetch archives:', error); }
+
+            const directionsHTML = `<div class="mt-4"><button id="directions-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-full inline-flex items-center hover:bg-blue-700 transition-colors"><svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.428A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path></svg>Get Directions</button></div>`;
+            const virtualTourHTML = monastery.VirtualTourURL ? `<div class="mt-6"><h4 class="text-lg font-semibold text-slate-800 mb-2">360° Virtual Tour</h4><div class="rounded-lg overflow-hidden border"><iframe src="${monastery.VirtualTourURL}" class="w-full h-80" allowfullscreen="" loading="lazy"></iframe></div></div>` : '';
+            const narrationHTML = monastery.NarrationAudioURL && monastery.OverviewText ? `<div class="mt-4"><h4 class="text-lg font-semibold text-slate-800 mb-2">Overview</h4><p class="text-slate-600">${monastery.OverviewText}</p><button id="narration-btn" class="mt-4 bg-orange-500 text-white font-bold py-2 px-4 rounded-full inline-flex items-center hover:bg-orange-600"><svg id="narration-icon" class="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg><span id="narration-text">Play Narration</span></button></div>` : `<div class="mt-4"><h4 class="text-lg font-semibold text-slate-800 mb-2">Overview</h4><p class="text-slate-600">${monastery.OverviewText || 'No overview available.'}</p></div>`;
+            
+            modalContent.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div>
+                        <img src="${monastery.ImageURL || 'https://placehold.co/600x400'}" alt="${monastery.Name}" class="w-full h-auto object-cover rounded-lg shadow-lg mb-4">
+                        <h4 class="text-lg font-semibold text-slate-800 mb-2">Details</h4>
+                        <ul class="space-y-1 text-slate-700"><li><strong>Established:</strong> ${monastery.Era}</li></ul>
+                        ${directionsHTML}
+                    </div>
+                    <div>
+                        ${narrationHTML}
+                        ${virtualTourHTML}
+                    </div>
+                </div>
+                ${archiveHTML}
+            `;
+            
+            modal.classList.remove('hidden');
+            modalContent.scrollTop = 0;
+
+            document.getElementById('directions-btn').addEventListener('click', () => getDirectionsToLocation(monastery.Latitude, monastery.Longitude));
+            
+            const narrationButton = document.getElementById('narration-btn');
+            if (narrationButton) {
+                let isPlaying = false;
+                currentNarration = new Audio(monastery.NarrationAudioURL);
+                const narrationText = document.getElementById('narration-text');
+                const narrationIcon = document.getElementById('narration-icon');
+                const playIconPath = "M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z";
+                const pauseIconPath = "M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z";
+                narrationButton.addEventListener('click', () => {
+                    if (!isPlaying) { currentNarration.play(); narrationText.textContent = 'Pause Narration'; narrationIcon.querySelector('path').setAttribute('d', pauseIconPath); } 
+                    else { currentNarration.pause(); narrationText.textContent = 'Play Narration'; narrationIcon.querySelector('path').setAttribute('d', playIconPath); }
+                    isPlaying = !isPlaying;
+                });
+                currentNarration.onended = () => { isPlaying = false; narrationText.textContent = 'Play Narration'; narrationIcon.querySelector('path').setAttribute('d', playIconPath); };
+            }
+        }
+
+        window.closeModal = function() {
+            if (currentNarration) { currentNarration.pause(); currentNarration = null; }
+            modal.classList.add('hidden');
+        }
+
+        function applyFilterAndRender(type, searchTerm = '') {
+            currentPage = 1;
+            const term = searchTerm.toLowerCase();
+            if (type === 'tours') {
+                filteredMonasteries = monasteriesData.filter(m => m.VirtualTourURL);
+            } else if (type === 'search') {
+                filteredMonasteries = monasteriesData.filter(m => 
+                    (m.Name && m.Name.toLowerCase().includes(term)) || 
+                    (m.Era && m.Era.toLowerCase().includes(term))
+                );
+            } else {
+                filteredMonasteries = [...monasteriesData];
+            }
+            renderMonasteries(filteredMonasteries);
+            updateMonasteryMarkers(filteredMonasteries);
+        }
+
+        function renderMonasteries(monasteries) {
+            const monasteryList = document.getElementById('monastery-list');
+            const noResultsEl = document.getElementById('no-monasteries-found');
+            monasteryList.innerHTML = '';
+            if (monasteries.length === 0) {
+                if(noResultsEl) noResultsEl.classList.remove('hidden');
+                setupPagination([], document.getElementById('pagination-controls'));
+                return;
+            }
+            if(noResultsEl) noResultsEl.classList.add('hidden');
+            const pagedMonasteries = monasteries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+            pagedMonasteries.forEach(monastery => {
+                const card = document.createElement('div');
+                card.className = 'monastery-card-dynamic bg-white rounded-lg shadow-md overflow-hidden cursor-pointer';
+                card.setAttribute('data-tilt', '');
+                card.innerHTML = `<img src="${monastery.ImageURL || 'https://placehold.co/600x400'}" alt="${monastery.Name}" class="w-full h-48 object-cover"><div class="p-4"><h3 class="font-bold text-lg text-slate-800">${monastery.Name}</h3><p class="text-sm text-slate-500">${monastery.Era}</p><p class="text-sm text-slate-600 mt-2 truncate">${monastery.Description}</p></div>`;
+                card.addEventListener('click', () => showMonasteryDetails(monastery.MonasteryID));
+                monasteryList.appendChild(card);
+            });
+            VanillaTilt.init(document.querySelectorAll("[data-tilt]"), { max: 15, speed: 400, glare: true, "max-glare": 0.5 });
+            gsap.from(".monastery-card-dynamic", { duration: 0.5, opacity: 0, y: 30, stagger: 0.1, ease: "power2.out" });
+            setupPagination(monasteries, document.getElementById('pagination-controls'));
+        }
+
+        function setupPagination(items, wrapper) { 
+            if (!wrapper) return;
+            wrapper.innerHTML = ''; 
+            const pageCount = Math.ceil(items.length / ITEMS_PER_PAGE); 
+            if (pageCount <= 1) return;
+            const prevButton = document.createElement('button');
+            prevButton.innerHTML = '&laquo; Prev';
+            prevButton.className = 'px-4 py-2 bg-white rounded-md shadow-sm text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50';
+            prevButton.disabled = currentPage === 1;
+            prevButton.addEventListener('click', () => { if (currentPage > 1) { currentPage--; renderMonasteries(filteredMonasteries); } });
+            wrapper.appendChild(prevButton);
+            const pageInfo = document.createElement('span');
+            pageInfo.className = 'text-sm text-slate-600';
+            pageInfo.textContent = `Page ${currentPage} of ${pageCount}`;
+            wrapper.appendChild(pageInfo);
+            const nextButton = document.createElement('button');
+            nextButton.innerHTML = 'Next &raquo;';
+            nextButton.className = 'px-4 py-2 bg-white rounded-md shadow-sm text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50';
+            nextButton.disabled = currentPage === pageCount;
+            nextButton.addEventListener('click', () => { if (currentPage < pageCount) { currentPage++; renderMonasteries(filteredMonasteries); } });
+            wrapper.appendChild(nextButton);
+        }
+
+        function setupDashboard() {
+            const totalMonasteriesEl = document.getElementById('total-monasteries');
+            const virtualToursEl = document.getElementById('virtual-tours');
+            if(!totalMonasteriesEl || !virtualToursEl) return;
+            const total = monasteriesData.length;
+            const withTours = monasteriesData.filter(m => m.VirtualTourURL).length;
+            animateValue(totalMonasteriesEl, total);
+            animateValue(virtualToursEl, withTours);
+            document.getElementById('total-monasteries-card')?.addEventListener('click', () => { applyFilterAndRender('all'); document.getElementById('monasteries').scrollIntoView(); });
+            document.getElementById('virtual-tours-card')?.addEventListener('click', () => { applyFilterAndRender('tours'); document.getElementById('monasteries').scrollIntoView(); });
+            renderDashboardChart();
+        }
+
+        function animateValue(obj, end, start = 0, duration = 2000) {
+            let startTimestamp = null;
+            const step = (timestamp) => {
+                if (!startTimestamp) startTimestamp = timestamp;
+                const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                obj.innerHTML = Math.floor(progress * (end - start) + start);
+                if (progress < 1) window.requestAnimationFrame(step);
+            };
+            window.requestAnimationFrame(step);
+        }
+
+        function renderDashboardChart() {
+            const ctx = document.getElementById('eraChart')?.getContext('2d');
+            if(!ctx) return;
+            const eraCounts = monasteriesData.reduce((acc, m) => {
+                const era = m.Era || 'Unknown';
+                acc[era] = (acc[era] || 0) + 1;
+                return acc;
+            }, {});
+            const sortedEras = Object.keys(eraCounts).sort((a, b) => parseInt(a) - parseInt(b));
+            if (eraChart) eraChart.destroy();
+            eraChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedEras,
+                    datasets: [{
+                        label: '# of Monasteries',
+                        data: sortedEras.map(era => eraCounts[era]),
+                        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+                    responsive: true,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+        
+        function rotateBackground() {
+            const nextIndex = (currentBgIndex + 1) % bgImages.length;
+            const newImage = document.createElement('div');
+            newImage.className = 'bg-image';
+            newImage.style.backgroundImage = `url(${bgImages[currentBgIndex]})`;
+            newImage.style.opacity = 0;
+            newImage.style.transform = 'scale(1.1)';
+            bgRotator.appendChild(newImage);
+            setTimeout(() => { newImage.style.opacity = 1; newImage.style.transform = 'scale(1)'; }, 100);
+            
+            const oldImage = bgRotator.querySelector('.bg-image');
+            if (oldImage && bgRotator.childElementCount > 1) {
+                oldImage.style.opacity = 0;
+                setTimeout(() => oldImage.remove(), 2000);
+            }
+            currentBgIndex = nextIndex;
+        }
+
+        function debounce(func, delay) {
+            let timeout;
+            return function(...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
+        
+        searchInput.addEventListener('input', debounce(e => {
+            applyFilterAndRender('search', e.target.value);
+            document.getElementById('monasteries').scrollIntoView();
+            searchOverlay.classList.add('hidden');
+        }, 500));
+        
+        window.addEventListener('scroll', () => header.classList.toggle('scrolled', window.scrollY > 50));
+        searchBtn.addEventListener('click', () => searchOverlay.classList.remove('hidden'));
+        searchCloseBtn.addEventListener('click', () => searchOverlay.classList.add('hidden'));
+        mobileMenuBtn.addEventListener('click', () => mobileMenu.classList.remove('hidden'));
+        mobileMenuCloseBtn.addEventListener('click', () => mobileMenu.classList.add('hidden'));
+        document.querySelectorAll('.mobile-nav-link, .header nav a').forEach(link => {
+            link.addEventListener('click', () => {
+                if (!mobileMenu.classList.contains('hidden')) {
+                    mobileMenu.classList.add('hidden');
+                }
+            });
+        });
+
+        loadData();
+    });
+    </script>
+</body>
+</html>
